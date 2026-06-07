@@ -6,11 +6,16 @@ import LoginPage from './pages/LoginPage'
 import Dashboard from './pages/Dashboard'
 import Leaderboard from './pages/Leaderboard'
 import MyScorecard from './pages/MyScorecard'
+import KRALog from './pages/KRALog'
+import TeamPanel from './pages/TeamPanel'
+import HallOfFame from './pages/HallOfFame'
 import DataEntry from './pages/admin/DataEntry'
-
+import TargetManager from './pages/admin/TargetManager'
+import UserManager from './pages/admin/UserManager'
+import AuditLog from './pages/admin/AuditLog'
 
 function ProtectedRoute({ children, permission }) {
-  const { user, profile, loading, can } = useAuth()
+  const { user, loading, can } = useAuth()
   if (loading) return <PageLoader />
   if (!user) return <Navigate to="/login" replace />
   if (permission && !can(permission)) return <AccessDenied />
@@ -31,16 +36,6 @@ function AccessDenied() {
       <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
       <h2 style={{ color: '#012D4C', marginBottom: '8px' }}>Access Denied</h2>
       <p style={{ color: '#6B7280' }}>You don't have permission to view this page.</p>
-    </div>
-  )
-}
-
-function ComingSoon({ title }) {
-  return (
-    <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'Montserrat, sans-serif' }}>
-      <div style={{ fontSize: '40px', marginBottom: '12px' }}>🚧</div>
-      <h2 style={{ color: '#012D4C', marginBottom: '8px' }}>{title}</h2>
-      <p style={{ color: '#6B7280' }}>Being built in the next session.</p>
     </div>
   )
 }
@@ -74,25 +69,22 @@ function AppRoutes() {
 
         <Route path="team" element={
           <ProtectedRoute permission="view_team_panel">
-            <React.Suspense fallback={<PageLoader />}>
-              <ComingSoon title="Team Panel" />
-            </React.Suspense>
+            <TeamPanel />
           </ProtectedRoute>
         } />
 
         <Route path="kra" element={
           <ProtectedRoute>
-            <ComingSoon title="KRA Log" />
+            <KRALog />
           </ProtectedRoute>
         } />
 
         <Route path="hall-of-fame" element={
           <ProtectedRoute>
-            <ComingSoon title="Hall of Fame" />
+            <HallOfFame />
           </ProtectedRoute>
         } />
 
-        {/* Admin routes */}
         <Route path="admin/entry" element={
           <ProtectedRoute permission="enter_data">
             <DataEntry />
@@ -101,19 +93,19 @@ function AppRoutes() {
 
         <Route path="admin/targets" element={
           <ProtectedRoute permission="set_targets">
-            <ComingSoon title="Target Manager" />
+            <TargetManager />
           </ProtectedRoute>
         } />
 
         <Route path="admin/users" element={
           <ProtectedRoute permission="manage_users">
-            <ComingSoon title="User Manager" />
+            <UserManager />
           </ProtectedRoute>
         } />
 
         <Route path="admin/audit" element={
           <ProtectedRoute permission="view_audit_log">
-            <ComingSoon title="Audit Log" />
+            <AuditLog />
           </ProtectedRoute>
         } />
       </Route>

@@ -13,6 +13,7 @@ const C = {
   gold: '#F59E0B',
   silver: '#94A3B8',
   bronze: '#CD7F32',
+  error: '#EF4444',
 }
 
 const MEDAL = { 1: { icon: '🥇', color: C.gold }, 2: { icon: '🥈', color: C.silver }, 3: { icon: '🥉', color: C.bronze } }
@@ -238,7 +239,7 @@ const s = {
   tabs: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 },
   tab: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 13, fontFamily: 'Montserrat, sans-serif', fontWeight: 500, color: C.muted, transition: 'all .15s' },
   tabActive: { background: C.prussian, color: C.white, borderColor: C.prussian, fontWeight: 700 },
-  tabLabel: { display: 'none' },
+  tabLabel: { fontSize: 12, fontWeight: 600 },
   toggleRow: { display: 'flex', gap: 8, marginBottom: 16 },
   toggleBtn: { padding: '7px 16px', borderRadius: 20, border: `1.5px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 13, fontFamily: 'Montserrat, sans-serif', fontWeight: 500, color: C.muted },
   toggleActive: { background: C.electric, color: C.white, borderColor: C.electric, fontWeight: 700 },
