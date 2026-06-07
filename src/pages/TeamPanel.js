@@ -52,18 +52,33 @@ export default function TeamPanel() {
     return { ...pl, byKey, total: rows.reduce((s, r) => s + (r.actual_mt || 0), 0) }
   })
 
-  // Inquiry source donut
-  const sourceData = SOURCE_KEYS.map((key, i) => ({
+  // Inquiry source donut — fall back to illustrative dummy data if no entries yet
+  const rawSourceData = SOURCE_KEYS.map((key, i) => ({
     name: SOURCE_LABELS[i],
     value: parseFloat(teamMetrics?.[key] || 0),
-  })).filter(d => d.value > 0)
+  }))
+  const hasSourceData = rawSourceData.some(d => d.value > 0)
+  const sourceData = hasSourceData ? rawSourceData.filter(d => d.value > 0) : [
+    { name: 'Referrals',      value: 40 },
+    { name: 'Website',        value: 20 },
+    { name: 'Expo',           value: 25 },
+    { name: 'Cold Outreach',  value: 10 },
+    { name: 'International',  value: 5  },
+  ]
 
-  // Conversion funnel
-  const funnelData = [
+  // Conversion funnel — fall back to dummy if no entries yet
+  const rawFunnel = [
     { name: 'Inquiries', value: teamMetrics?.inquiries_received || 0, fill: C.prussian },
     { name: 'Quotes',    value: teamMetrics?.quotes_sent || 0,        fill: C.electric },
     { name: 'Orders',    value: teamMetrics?.orders_won || 0,         fill: C.green    },
   ]
+  const hasFunnelData = rawFunnel.some(d => d.value > 0)
+  const funnelData = hasFunnelData ? rawFunnel : [
+    { name: 'Inquiries', value: 100, fill: C.prussian },
+    { name: 'Quotes',    value: 60,  fill: C.electric },
+    { name: 'Orders',    value: 25,  fill: C.green    },
+  ]
+  const funnelIsDummy = !hasFunnelData
 
   const mtd = parseFloat(summary?.mtd_mt || 0)
   const qtd = parseFloat(summary?.qtd_mt || 0)
@@ -78,11 +93,11 @@ export default function TeamPanel() {
       {/* KPI row */}
       <div style={s.kpiRow}>
         {[
-          { label: 'MTD MT', value: `${mtd.toFixed(1)} MT`, color: C.green   },
-          { label: 'QTD MT', value: `${qtd.toFixed(1)} MT`, color: C.electric},
-          { label: 'YTD MT', value: `${ytd.toFixed(1)} MT`, color: C.prussian},
-          { label: 'MTD Revenue', value: `₹${mtdRev.toFixed(2)} Cr`, color: '#8B5CF6' },
-          { label: 'MTD Orders', value: summary?.mtd_orders || 0, color: '#F59E0B' },
+          { label: 'MTD MT',      value: `${mtd.toFixed(1)} MT`,          color: C.green   },
+          { label: 'QTD MT',      value: `${qtd.toFixed(1)} MT`,          color: C.electric},
+          { label: 'YTD MT',      value: `${ytd.toFixed(1)} MT`,          color: C.electric},
+          { label: 'MTD Revenue', value: `₹${mtdRev.toFixed(2)} Cr`,      color: C.electric},
+          { label: 'MTD Orders',  value: summary?.mtd_orders || 0,         color: C.electric},
         ].map(k => (
           <div key={k.label} style={s.kpiCard}>
             <div style={s.kpiLabel}>{k.label}</div>
@@ -141,55 +156,49 @@ export default function TeamPanel() {
       <div style={s.chartsRow}>
         {/* Donut */}
         <div style={s.chartCard}>
-          <div style={s.sectionTitle}>Inquiry Sources</div>
-          {sourceData.length === 0 ? (
-            <div style={s.empty}>No source data for this period.</div>
-          ) : (
-            <>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={sourceData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
-                    {sourceData.map((_, i) => <Cell key={i} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => [`${v.toFixed(1)} MT`, '']} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={s.legend}>
-                {sourceData.map((d, i) => (
-                  <div key={d.name} style={s.legendItem}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: SOURCE_COLORS[i], flexShrink: 0 }} />
-                    <span style={{ fontSize: 12 }}>{d.name}: <strong>{d.value.toFixed(1)}</strong></span>
-                  </div>
-                ))}
+          <div style={s.sectionTitle}>
+            Inquiry Sources {!hasSourceData && <span style={s.dummyTag}>sample data</span>}
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={sourceData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
+                {sourceData.map((_, i) => <Cell key={i} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} />)}
+              </Pie>
+              <Tooltip formatter={(v, name) => [`${v}${hasSourceData ? ' MT' : '%'}`, name]} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={s.legend}>
+            {sourceData.map((d, i) => (
+              <div key={d.name} style={s.legendItem}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: SOURCE_COLORS[i], flexShrink: 0 }} />
+                <span style={{ fontSize: 12 }}>{d.name}: <strong>{hasSourceData ? d.value.toFixed(1) : `${d.value}%`}</strong></span>
               </div>
-            </>
-          )}
+            ))}
+          </div>
         </div>
 
         {/* Funnel */}
         <div style={s.chartCard}>
-          <div style={s.sectionTitle}>Conversion Funnel</div>
-          {funnelData.every(d => d.value === 0) ? (
-            <div style={s.empty}>No funnel data for this period.</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <FunnelChart>
-                <Tooltip />
-                <Funnel dataKey="value" data={funnelData} isAnimationActive>
-                  <LabelList position="center" fill="#fff" stroke="none" style={{ fontWeight: 700, fontSize: 13 }} />
-                </Funnel>
-              </FunnelChart>
-            </ResponsiveContainer>
-          )}
+          <div style={s.sectionTitle}>
+            Conversion Funnel {funnelIsDummy && <span style={s.dummyTag}>sample data</span>}
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <FunnelChart>
+              <Tooltip formatter={(v) => [funnelIsDummy ? `${v} (sample)` : v, '']} />
+              <Funnel dataKey="value" data={funnelData} isAnimationActive>
+                <LabelList position="center" fill="#fff" stroke="none" style={{ fontWeight: 700, fontSize: 13, fontFamily: 'Montserrat, sans-serif' }} />
+              </Funnel>
+            </FunnelChart>
+          </ResponsiveContainer>
           <div style={s.legend}>
-            {funnelData.map(d => (
+            {funnelData.map((d, i) => (
               <div key={d.name} style={s.legendItem}>
                 <div style={{ width: 10, height: 10, borderRadius: 3, background: d.fill, flexShrink: 0 }} />
                 <span style={{ fontSize: 12 }}>{d.name}: <strong>{d.value}</strong></span>
-                {d.name === 'Quotes' && funnelData[0].value > 0 && (
+                {i === 1 && funnelData[0].value > 0 && (
                   <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>({((d.value / funnelData[0].value) * 100).toFixed(0)}%)</span>
                 )}
-                {d.name === 'Orders' && funnelData[1].value > 0 && (
+                {i === 2 && funnelData[1].value > 0 && (
                   <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>({((d.value / funnelData[1].value) * 100).toFixed(0)}%)</span>
                 )}
               </div>
@@ -231,4 +240,5 @@ const s = {
   legend: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 12 },
   legendItem: { display: 'flex', alignItems: 'center', gap: 6 },
   empty: { color: C.muted, fontSize: 13, textAlign: 'center', padding: '20px 0' },
+  dummyTag: { fontSize: 10, fontWeight: 600, color: C.muted, background: '#F1F5F9', borderRadius: 4, padding: '1px 6px', marginLeft: 6, textTransform: 'none', letterSpacing: 0 },
 }

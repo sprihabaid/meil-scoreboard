@@ -21,8 +21,11 @@ export default function TargetManager() {
   const [filterUser, setFilterUser] = useState('')
 
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name')
-      .then(({ data }) => setUsers(data || []))
+    supabase.from('profiles').select('id, full_name').order('full_name')
+      .then(({ data, error }) => {
+        if (error) console.error('TargetManager profiles error:', error)
+        setUsers(data || [])
+      })
     loadTargets()
   }, [])
 
@@ -173,7 +176,10 @@ export default function TargetManager() {
   )
 }
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
 
 const s = {
   page: { padding: '32px 24px', fontFamily: 'Montserrat, sans-serif', maxWidth: 1040, margin: '0 auto' },

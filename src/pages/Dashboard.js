@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [teamSummary, setTeamSummary] = useState(null)
   const [feed, setFeed] = useState([])
   const [shoutouts, setShoutouts] = useState([])
+  const [teamMtTarget, setTeamMtTarget] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const today = new Date()
@@ -25,7 +26,7 @@ export default function Dashboard() {
 
   const fetchAll = async () => {
     try {
-      const [lbRes, teamRes, feedRes, shoutRes] = await Promise.all([
+      const [lbRes, teamRes, feedRes, shoutRes, targetRes] = await Promise.all([
         supabase.from('v_current_month_leaderboard').select('*'),
         supabase.from('v_team_summary').select('*').single(),
         supabase.from('recognition_feed')
@@ -37,12 +38,18 @@ export default function Dashboard() {
           .gt('expires_at', new Date().toISOString())
           .order('created_at', { ascending: false })
           .limit(5),
+        supabase.from('targets').select('target_mt').is('effective_to', null),
       ])
 
       if (lbRes.data) setLeaderboard(lbRes.data)
       if (teamRes.data) setTeamSummary(teamRes.data)
       if (feedRes.data) setFeed(feedRes.data)
       if (shoutRes.data) setShoutouts(shoutRes.data)
+      if (!targetRes.error && targetRes.data?.length > 0) {
+        setTeamMtTarget(targetRes.data.reduce((sum, t) => sum + parseFloat(t.target_mt || 0), 0))
+      } else {
+        setTeamMtTarget(null)
+      }
     } catch (err) {
       console.error('Dashboard fetch error:', err)
     } finally {
@@ -62,9 +69,8 @@ export default function Dashboard() {
   }
 
   // Team MT progress
-  const teamMtTarget = 260 // ~3100/12 placeholder — set from targets in prod
   const teamMtAchieved = parseFloat(teamSummary?.mtd_mt || 0)
-  const teamMtPct = Math.min((teamMtAchieved / teamMtTarget) * 100, 100)
+  const teamMtPct = teamMtTarget ? Math.min((teamMtAchieved / teamMtTarget) * 100, 100) : 0
 
   return (
     <div style={styles.container}>
@@ -90,8 +96,14 @@ export default function Dashboard() {
             <div style={styles.heroLabel}>TEAM MT — THIS MONTH</div>
             <div style={styles.heroNumbers}>
               <span style={styles.heroAchieved}>{teamMtAchieved.toFixed(1)} MT</span>
-              <span style={styles.heroOf}> of </span>
-              <span style={styles.heroTarget}>{teamMtTarget} MT target</span>
+              {teamMtTarget ? (
+                <>
+                  <span style={styles.heroOf}> of </span>
+                  <span style={styles.heroTarget}>{teamMtTarget.toFixed(0)} MT target</span>
+                </>
+              ) : (
+                <span style={{ ...styles.heroTarget, color: 'rgba(255,255,255,0.35)', fontSize: 13 }}> — No target set</span>
+              )}
             </div>
           </div>
           <div style={styles.heroPct}>{teamMtPct.toFixed(0)}%</div>
@@ -111,7 +123,7 @@ export default function Dashboard() {
           ))}
         </div>
         <div style={styles.heroFooter}>
-          <span>{(teamMtTarget - teamMtAchieved).toFixed(1)} MT remaining</span>
+          <span>{teamMtTarget ? `${(teamMtTarget - teamMtAchieved).toFixed(1)} MT remaining` : 'Set targets to track progress'}</span>
           <span>Revenue: ₹{parseFloat(teamSummary?.mtd_revenue || 0).toFixed(2)} Cr MTD</span>
         </div>
       </div>

@@ -9,13 +9,13 @@ const C = {
 }
 
 const FIELDS = [
-  { key: 'mt_brought',             label: 'MT Brought',            unit: 'MT',   step: '0.01'   },
-  { key: 'inquiries_in_mt',        label: 'Inquiries in MT',       unit: 'MT',   step: '0.01'   },
-  { key: 'new_clients',            label: 'New Clients',           unit: '',     step: '1'      },
-  { key: 'avg_closing_price',      label: 'Avg Closing Price',     unit: '₹/MT', step: '0.01'   },
-  { key: 'inquiry_to_quote_hours', label: 'Inquiry-to-Quote TAT',  unit: 'hrs',  step: '0.1'    },
-  { key: 'revenue_rs_cr',          label: 'Revenue',               unit: '₹ Cr', step: '0.0001' },
-  { key: 'orders_count',           label: 'Orders Count',          unit: '',     step: '1'      },
+  { key: 'mt_brought',             label: 'MT Brought',            unit: 'MT',   step: '0.01',   ph: 'e.g. 12.5'   },
+  { key: 'inquiries_in_mt',        label: 'Inquiries in MT',       unit: 'MT',   step: '0.01',   ph: 'e.g. 8.0'    },
+  { key: 'new_clients',            label: 'New Clients',           unit: '',     step: '1',      ph: 'e.g. 2'      },
+  { key: 'avg_closing_price',      label: 'Avg Closing Price',     unit: '₹/MT', step: '0.01',   ph: 'e.g. 45000'  },
+  { key: 'inquiry_to_quote_hours', label: 'Inquiry-to-Quote TAT',  unit: 'hrs',  step: '0.1',    ph: 'e.g. 4.5'    },
+  { key: 'revenue_rs_cr',          label: 'Revenue',               unit: '₹ Cr', step: '0.0001', ph: 'e.g. 0.5'    },
+  { key: 'orders_count',           label: 'Orders Count',          unit: '',     step: '1',      ph: 'e.g. 3'      },
 ]
 const EMPTY = Object.fromEntries(FIELDS.map(f => [f.key, '']))
 
@@ -103,9 +103,11 @@ export default function DataEntry() {
     supabase
       .from('profiles')
       .select('id, full_name, role')
-      .eq('is_active', true)
       .order('full_name')
-      .then(({ data }) => setSalespersons(data || []))
+      .then(({ data, error }) => {
+        if (error) console.error('profiles fetch error:', error)
+        setSalespersons(data || [])
+      })
   }, [])
 
   useEffect(() => {
@@ -185,7 +187,7 @@ export default function DataEntry() {
           {FIELDS.map(f => (
             <div key={f.key} style={s.field}>
               <label style={s.label}>{f.label}{f.unit && <span style={s.unit}> ({f.unit})</span>}</label>
-              <input type="number" style={s.input} value={form[f.key]} step={f.step} min="0" placeholder="0"
+              <input type="number" style={s.input} value={form[f.key]} step={f.step} min="0" placeholder={f.ph}
                 onChange={e => setForm(fm => ({ ...fm, [f.key]: e.target.value }))} />
             </div>
           ))}
@@ -205,7 +207,10 @@ export default function DataEntry() {
   )
 }
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
 
 const s = {
   page: { padding: '32px 24px', fontFamily: 'Montserrat, sans-serif', maxWidth: 840, margin: '0 auto' },

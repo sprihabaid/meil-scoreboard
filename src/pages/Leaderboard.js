@@ -19,16 +19,19 @@ const C = {
 const MEDAL = { 1: { icon: '🥇', color: C.gold }, 2: { icon: '🥈', color: C.silver }, 3: { icon: '🥉', color: C.bronze } }
 
 const IMPROVED_MODES = [
-  { key: 'wow',  label: 'Week on Week' },
-  { key: 'mom',  label: 'Month on Month' },
-  { key: 'week', label: 'Week 1–4 vs Last Month' },
+  { key: 'mom',   label: 'Month on Month'          },
+  { key: 'wow',   label: 'Week on Week'             },
+  { key: 'w1',    label: 'Week 1 vs Week 1 (prev)'  },
+  { key: 'w2',    label: 'Week 2 vs Week 2 (prev)'  },
+  { key: 'w3',    label: 'Week 3 vs Week 3 (prev)'  },
+  { key: 'w4',    label: 'Week 4 vs Week 4 (prev)'  },
 ]
 
 export default function Leaderboard() {
   const [rows, setRows] = useState([])
   const [improved, setImproved] = useState([])
   const [loading, setLoading] = useState(true)
-  const [improvedMode, setImprovedMode] = useState('wow')
+  const [improvedMode, setImprovedMode] = useState('mom')
   const [activeTab, setActiveTab] = useState('mt')
 
   const fetchLeaderboard = useCallback(async () => {
@@ -44,7 +47,6 @@ export default function Leaderboard() {
     let curStart, curEnd, prevStart, prevEnd
 
     if (mode === 'wow') {
-      // Current week Mon–today vs previous week Mon–Sun
       const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1
       curStart = new Date(now); curStart.setDate(now.getDate() - dayOfWeek)
       curEnd = now
@@ -56,14 +58,17 @@ export default function Leaderboard() {
       prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
       prevEnd = new Date(now.getFullYear(), now.getMonth(), 0)
     } else {
-      // Week 1-4 current vs same week last month
-      const weekNum = Math.ceil(now.getDate() / 7)
+      // w1 = days 1-7, w2 = 8-14, w3 = 15-21, w4 = 22-end
+      const weekNum = { w1: 1, w2: 2, w3: 3, w4: 4 }[mode] || 1
       const wStart = (weekNum - 1) * 7 + 1
-      const wEnd = Math.min(weekNum * 7, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate())
+      const lastDayThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate()
+      const wEnd = weekNum === 4 ? lastDayThisMonth : weekNum * 7
+      const wEndPrev = weekNum === 4 ? lastDayPrevMonth : weekNum * 7
       curStart = new Date(now.getFullYear(), now.getMonth(), wStart)
       curEnd = new Date(now.getFullYear(), now.getMonth(), wEnd)
       prevStart = new Date(now.getFullYear(), now.getMonth() - 1, wStart)
-      prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, wEnd)
+      prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, wEndPrev)
     }
 
     const fmt = d => d.toISOString().slice(0, 10)
@@ -237,10 +242,10 @@ const s = {
   title: { fontSize: 26, fontWeight: 700, color: C.prussian, margin: 0 },
   sub: { color: C.muted, marginTop: 4, fontSize: 14 },
   tabs: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 },
-  tab: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 13, fontFamily: 'Montserrat, sans-serif', fontWeight: 500, color: C.muted, transition: 'all .15s' },
+  tab: { display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 12, fontFamily: 'Montserrat, sans-serif', fontWeight: 500, color: C.muted, transition: 'all .15s', whiteSpace: 'nowrap' },
   tabActive: { background: C.prussian, color: C.white, borderColor: C.prussian, fontWeight: 700 },
   tabLabel: { fontSize: 12, fontWeight: 600 },
-  toggleRow: { display: 'flex', gap: 8, marginBottom: 16 },
+  toggleRow: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
   toggleBtn: { padding: '7px 16px', borderRadius: 20, border: `1.5px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 13, fontFamily: 'Montserrat, sans-serif', fontWeight: 500, color: C.muted },
   toggleActive: { background: C.electric, color: C.white, borderColor: C.electric, fontWeight: 700 },
   card: { background: C.white, borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.08)', overflow: 'hidden' },

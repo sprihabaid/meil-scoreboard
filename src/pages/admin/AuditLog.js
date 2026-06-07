@@ -30,7 +30,7 @@ export default function AuditLog() {
   const load = useCallback(() => {
     setLoading(true)
     let q = supabase.from('audit_log')
-      .select('id, action, table_name, user_id, user_name, user_role, changed_fields, notes, created_at, old_values, new_values')
+      .select('id, action, table_name, user_id, user_name, user_role, changed_fields, notes, created_at, old_values, new_values, actor:profiles(full_name)')
       .order('created_at', { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
@@ -85,7 +85,7 @@ export default function AuditLog() {
                     <tr style={{ cursor: 'pointer', background: isExp ? '#F0F4FF' : undefined }} onClick={() => setExpandedId(isExp ? null : log.id)}>
                       <td style={{ ...s.td, whiteSpace: 'nowrap', color: C.muted, fontSize: 12 }}>{fmtDate(log.created_at)}</td>
                       <td style={s.td}>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{log.user_name || '—'}</div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{log.actor?.full_name || log.user_name || '—'}</div>
                         <div style={{ fontSize: 11, color: C.muted }}>{log.user_role}</div>
                       </td>
                       <td style={s.td}>

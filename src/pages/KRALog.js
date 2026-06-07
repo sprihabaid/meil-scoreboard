@@ -43,7 +43,10 @@ export default function KRALog() {
   const [status, setStatus] = useState(null)
 
   const myTeam = profile?.team
-  const kraList = myTeam === 'backend' ? BACKEND_KRAS : FRONTEND_KRAS
+  const isAdminRole = profile?.role === 'superadmin' || profile?.role === 'admin'
+  const kraList = isAdminRole
+    ? [...FRONTEND_KRAS, ...BACKEND_KRAS]
+    : myTeam === 'backend' ? BACKEND_KRAS : FRONTEND_KRAS
 
   const loadMyKras = useCallback(() => {
     if (!user) return
@@ -148,7 +151,7 @@ export default function KRALog() {
                       <option value="0">No</option>
                     </select>
                   ) : (
-                    <input type="number" style={s.input} min="0" step="0.1" placeholder="0"
+                    <input type="number" style={s.input} min="0" step="0.1" placeholder="e.g. 3"
                       value={form[k.key] ?? ''} onChange={e => setForm(f => ({ ...f, [k.key]: e.target.value }))} />
                   )}
                 </div>
