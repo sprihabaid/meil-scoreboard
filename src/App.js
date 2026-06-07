@@ -4,6 +4,9 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import AppLayout from './components/shared/AppLayout'
 import LoginPage from './pages/LoginPage'
 import Dashboard from './pages/Dashboard'
+import Leaderboard from './pages/Leaderboard'
+import MyScorecard from './pages/MyScorecard'
+import DataEntry from './pages/admin/DataEntry'
 
 
 function ProtectedRoute({ children, permission }) {
@@ -59,17 +62,13 @@ function AppRoutes() {
 
         <Route path="leaderboard" element={
           <ProtectedRoute permission="view_leaderboard">
-            <React.Suspense fallback={<PageLoader />}>
-              <ComingSoon title="Full Leaderboard" />
-            </React.Suspense>
+            <Leaderboard />
           </ProtectedRoute>
         } />
 
         <Route path="scorecard" element={
           <ProtectedRoute>
-            <React.Suspense fallback={<PageLoader />}>
-              <ComingSoon title="My Scorecard" />
-            </React.Suspense>
+            <MyScorecard />
           </ProtectedRoute>
         } />
 
@@ -96,7 +95,7 @@ function AppRoutes() {
         {/* Admin routes */}
         <Route path="admin/entry" element={
           <ProtectedRoute permission="enter_data">
-            <ComingSoon title="Data Entry" />
+            <DataEntry />
           </ProtectedRoute>
         } />
 
