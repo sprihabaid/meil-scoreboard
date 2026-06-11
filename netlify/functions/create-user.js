@@ -1,9 +1,5 @@
 const { createClient } = require('@supabase/supabase-js')
 
-const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL
-const ANON_KEY    = process.env.REACT_APP_SUPABASE_ANON_KEY
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -19,9 +15,26 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) }
   }
 
-  if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {
-    console.error('Missing env vars: REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY')
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration — contact the system administrator.' }) }
+  // Read env vars inside the handler — Lambda may not populate process.env at module init time
+  const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL
+  const ANON_KEY    = process.env.REACT_APP_SUPABASE_ANON_KEY
+  const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  const missing = [
+    !SUPABASE_URL  && 'REACT_APP_SUPABASE_URL',
+    !ANON_KEY      && 'REACT_APP_SUPABASE_ANON_KEY',
+    !SERVICE_KEY   && 'SUPABASE_SERVICE_ROLE_KEY',
+  ].filter(Boolean)
+
+  if (missing.length > 0) {
+    console.error('[create-user] Missing environment variable(s):', missing.join(', '))
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: `Function not configured. Missing env var(s): ${missing.join(', ')}. Add them in Netlify Dashboard → Site configuration → Environment variables, then redeploy.`,
+      }),
+    }
   }
 
   // ── 1. Verify caller is an authenticated admin ──────────────────────────────
