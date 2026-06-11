@@ -29,16 +29,19 @@ export default function UserManager() {
   const [newUser, setNewUser]       = useState(EMPTY_FORM)
   const [addError, setAddError]     = useState('')
   const [adding, setAdding]         = useState(false)
+  const [filterActive, setFilterActive] = useState('active')
 
-  const load = () => {
-    supabase.from('profiles').select('*').order('full_name')
-      .then(({ data, error }) => {
-        if (error) console.error('UserManager load error:', error)
-        setUsers(data || [])
-        setLoading(false)
-      })
-  }
-  useEffect(() => { load() }, [])
+  const load = useCallback(() => {
+    setLoading(true)
+    let q = supabase.from('profiles').select('*').order('full_name')
+    if (filterActive === 'active') q = q.eq('is_active', true)
+    q.then(({ data, error }) => {
+      if (error) console.error('UserManager load error:', error)
+      setUsers(data || [])
+      setLoading(false)
+    })
+  }, [filterActive])
+  useEffect(() => { load() }, [load])
 
   // ── Permission toggle — saves immediately ──
   const togglePerm = async (user, key) => {
@@ -107,9 +110,22 @@ export default function UserManager() {
       <div style={s.hdr}>
         <div>
           <h1 style={s.title}>Manage Users</h1>
-          <p style={s.sub}>{users.length} users — click a row to expand permissions</p>
+          <p style={s.sub}>{users.length} user{users.length !== 1 ? 's' : ''} — click a row to expand permissions</p>
         </div>
-        <button style={s.addBtn} onClick={() => { setShowModal(true); setAddError('') }}>+ Add User</button>
+        <div style={s.hdrActions}>
+          <div style={s.filterToggle}>
+            {['active', 'all'].map(v => (
+              <button
+                key={v}
+                style={{ ...s.filterBtn, ...(filterActive === v ? s.filterBtnActive : {}) }}
+                onClick={() => setFilterActive(v)}
+              >
+                {v === 'active' ? 'Active' : 'All users'}
+              </button>
+            ))}
+          </div>
+          <button style={s.addBtn} onClick={() => { setShowModal(true); setAddError('') }}>+ Add User</button>
+        </div>
       </div>
 
       {globalMsg && (
@@ -220,7 +236,11 @@ export default function UserManager() {
 const s = {
   page:       { padding: '32px 24px', fontFamily: 'Montserrat, sans-serif', maxWidth: 960, margin: '0 auto' },
   center:     { textAlign: 'center', padding: 60, color: C.muted, fontFamily: 'Montserrat, sans-serif' },
-  hdr:        { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+  hdr:        { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 },
+  hdrActions: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  filterToggle:    { display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1.5px solid ${C.border}` },
+  filterBtn:       { padding: '7px 16px', background: C.white, color: C.muted, border: 'none', fontFamily: 'Montserrat, sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  filterBtnActive: { background: C.prussian, color: C.white },
   title:      { fontSize: 26, fontWeight: 700, color: C.prussian, margin: 0 },
   sub:        { color: C.muted, marginTop: 4, fontSize: 14 },
   addBtn:     { padding: '9px 20px', background: C.prussian, color: C.white, border: 'none', borderRadius: 8, fontFamily: 'Montserrat, sans-serif', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
