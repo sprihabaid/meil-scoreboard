@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 const C = { prussian: '#012D4C', electric: '#015998', green: '#5AB947', white: '#FFFFFF', border: '#CBD5E1', text: '#1E293B', muted: '#64748B', error: '#EF4444', success: '#10B981', bg: '#F8FAFC' }
@@ -62,48 +62,40 @@ export default function UserManager() {
     else setGlobalMsg({ type: 'error', msg: error.message })
   }
 
-  // ── Add user: signUp then insert profile ──
+  // ── Add user: call Netlify function (uses service role, no confirmation email) ──
   const handleAdd = async (e) => {
     e.preventDefault()
     setAddError('')
     setAdding(true)
 
-    // 1. Create auth user
-    const { data: authData, error: authErr } = await supabase.auth.signUp({
-      email: newUser.email,
-      password: newUser.password,
-      options: { data: { full_name: newUser.full_name } },
-    })
-
-    if (authErr) {
+    const { data: { session } } = await supabase.auth.getSession()
+    let res, json
+    try {
+      res = await fetch('/.netlify/functions/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          email: newUser.email,
+          password: newUser.password,
+          full_name: newUser.full_name,
+          role: newUser.role,
+          team: newUser.team || null,
+        }),
+      })
+      json = await res.json()
+    } catch (err) {
       setAdding(false)
-      return setAddError(authErr.message)
+      return setAddError('Network error — could not reach the server. Please try again.')
     }
-
-    const uid = authData?.user?.id
-    if (!uid) {
-      setAdding(false)
-      return setAddError('Auth user created but no ID returned. Check Supabase Auth settings.')
-    }
-
-    // 2. Insert profile row
-    const { error: profileErr } = await supabase.from('profiles').insert({
-      id: uid,
-      full_name: newUser.full_name,
-      email: newUser.email,
-      role: newUser.role,
-      team: newUser.team || null,
-      is_active: true,
-    })
 
     setAdding(false)
-    if (profileErr) {
-      return setAddError(`Auth user created but profile insert failed: ${profileErr.message}`)
+    if (!res.ok || !json.success) {
+      return setAddError(json?.error || 'An unexpected error occurred.')
     }
 
     setShowModal(false)
     setNewUser(EMPTY_FORM)
-    setGlobalMsg({ type: 'success', msg: `✅ ${newUser.full_name} created successfully.` })
+    setGlobalMsg({ type: 'success', msg: `${json.full_name} created successfully.` })
     load()
   }
 
@@ -213,7 +205,7 @@ export default function UserManager() {
                   </select>
                 </div>
               </div>
-              {addError && <div style={{ color: C.error, fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>❌ {addError}</div>}
+              {addError && <div style={s.addErrBox}>❌ {addError}</div>}
               <button type="submit" style={s.btn} disabled={adding}>
                 {adding ? 'Creating…' : 'Create User'}
               </button>
@@ -262,4 +254,5 @@ const s = {
   input:      { padding: '9px 12px', borderRadius: 7, border: `1.5px solid ${C.border}`, fontSize: 14, fontFamily: 'Montserrat, sans-serif', outline: 'none' },
   select:     { padding: '9px 12px', borderRadius: 7, border: `1.5px solid ${C.border}`, fontSize: 14, fontFamily: 'Montserrat, sans-serif', outline: 'none', background: C.white },
   btn:        { width: '100%', padding: '12px', background: C.prussian, color: C.white, border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer', marginTop: 4 },
+  addErrBox:  { color: C.error, fontSize: 13, marginBottom: 12, lineHeight: 1.5, padding: '10px 14px', background: '#FEF2F2', border: `1.5px solid ${C.error}`, borderRadius: 8 },
 }
