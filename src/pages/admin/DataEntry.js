@@ -22,30 +22,10 @@ const EMPTY = Object.fromEntries(FIELDS.map(f => [f.key, '']))
 async function fireRecognitionEvents(userId, payload, prevEntry) {
   const events = []
   const now = new Date()
-
-  // Personal best: MT Brought
-  if (payload.mt_brought > 0) {
-    const { data: pb } = await supabase
-      .from('personal_bests')
-      .select('best_value')
-      .eq('user_id', userId)
-      .eq('metric_name', 'mt_brought')
-      .eq('period', 'daily')
-      .maybeSingle()
-
-    if (!pb || payload.mt_brought > pb.best_value) {
-      await supabase.from('personal_bests').upsert({
-        user_id: userId, metric_name: 'mt_brought', period: 'daily',
-        best_value: payload.mt_brought, achieved_date: payload.entry_date,
-      }, { onConflict: 'user_id,metric_name,period' })
-      events.push({ user_id: userId, event_type: 'personal_best', emoji: '🏆',
-        event_title: 'set a new personal best!',
-        event_body: `${payload.mt_brought} MT brought in a single day — a new record.` })
-    }
-  }
-
-  // MT milestone crossings (50 / 75 / 100 cumulative this month)
   const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
+
+  // MT milestone feed events for 50 and 75 MTD only.
+  // 100 MT (century_club badge + feed event) is handled by the DB trigger.
   const { data: monthEntries } = await supabase
     .from('daily_entries').select('mt_brought')
     .eq('user_id', userId).gte('entry_date', firstOfMonth)
@@ -53,21 +33,15 @@ async function fireRecognitionEvents(userId, payload, prevEntry) {
   const prevMtdNoToday = prevEntry ? prevMtd - (prevEntry.mt_brought || 0) : prevMtd - payload.mt_brought
   const newMtd = prevMtdNoToday + payload.mt_brought
 
-  for (const milestone of [50, 75, 100]) {
+  for (const milestone of [50, 75]) {
     if (prevMtdNoToday < milestone && newMtd >= milestone) {
       events.push({ user_id: userId, event_type: 'target_crossed', emoji: '🎯',
         event_title: `crossed ${milestone} MT this month!`,
         event_body: `Milestone reached: ${newMtd.toFixed(1)} MT MTD.` })
-      if (milestone === 100) {
-        await supabase.from('earned_badges').insert({
-          user_id: userId, badge_category: 'century_club',
-          earned_date: payload.entry_date, awarded_by: null,
-        }).throwOnError().catch(() => {}) // ignore duplicate
-      }
     }
   }
 
-  // First order of the month
+  // First order of the month — badge + feed event (stays client-side).
   if (payload.orders_count > 0 && !prevEntry) {
     const { data: prevOrders } = await supabase
       .from('daily_entries').select('id').eq('user_id', userId)
