@@ -74,7 +74,7 @@ export default function Leaderboard() {
     const fmt = d => d.toISOString().slice(0, 10)
 
     const [cur, prev] = await Promise.all([
-      supabase.from('daily_entries').select('user_id, mt_brought, profiles(full_name)').gte('entry_date', fmt(curStart)).lte('entry_date', fmt(curEnd)),
+      supabase.from('daily_entries').select('user_id, mt_brought, profiles!inner(full_name, role)').gte('entry_date', fmt(curStart)).lte('entry_date', fmt(curEnd)),
       supabase.from('daily_entries').select('user_id, mt_brought').gte('entry_date', fmt(prevStart)).lte('entry_date', fmt(prevEnd)),
     ])
 
@@ -89,15 +89,23 @@ export default function Leaderboard() {
     const curMap = sumBy(cur.data)
     const prevMap = sumBy(prev.data)
     const names = {}
-    cur.data.forEach(r => { if (r.profiles) names[r.user_id] = r.profiles.full_name })
+    const roles = {}
+    cur.data.forEach(r => {
+      if (r.profiles) {
+        names[r.user_id] = r.profiles.full_name
+        roles[r.user_id] = r.profiles.role
+      }
+    })
 
-    const result = Object.keys({ ...curMap, ...prevMap }).map(uid => ({
-      id: uid,
-      full_name: names[uid] || uid,
-      cur_mt: curMap[uid] || 0,
-      prev_mt: prevMap[uid] || 0,
-      delta: (curMap[uid] || 0) - (prevMap[uid] || 0),
-    })).sort((a, b) => b.delta - a.delta)
+    const result = Object.keys({ ...curMap, ...prevMap })
+      .filter(uid => roles[uid] !== 'superadmin')
+      .map(uid => ({
+        id: uid,
+        full_name: names[uid] || uid,
+        cur_mt: curMap[uid] || 0,
+        prev_mt: prevMap[uid] || 0,
+        delta: (curMap[uid] || 0) - (prevMap[uid] || 0),
+      })).sort((a, b) => b.delta - a.delta)
 
     setImproved(result)
   }, [])
