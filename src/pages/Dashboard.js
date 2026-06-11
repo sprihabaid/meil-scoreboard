@@ -59,15 +59,6 @@ export default function Dashboard() {
 
   if (loading) return <LoadingState />
 
-  // Get top 3 for each category
-  const top3 = {
-    mt: [...leaderboard].sort((a, b) => a.rank_mt - b.rank_mt).slice(0, 3),
-    price: [...leaderboard].sort((a, b) => a.rank_closing_price - b.rank_closing_price).slice(0, 3),
-    clients: [...leaderboard].sort((a, b) => a.rank_new_clients - b.rank_new_clients).slice(0, 3),
-    inquiries: [...leaderboard].sort((a, b) => a.rank_inquiries - b.rank_inquiries).slice(0, 3),
-    tat: [...leaderboard].sort((a, b) => a.rank_tat - b.rank_tat).slice(0, 3),
-  }
-
   // Team MT progress
   const teamMtAchieved = parseFloat(teamSummary?.mtd_mt || 0)
   const teamMtPct = teamMtTarget ? Math.min((teamMtAchieved / teamMtTarget) * 100, 100) : 0
@@ -130,16 +121,10 @@ export default function Dashboard() {
 
       {/* Main grid */}
       <div style={styles.mainGrid}>
-        {/* Left: Leaderboard top 3s */}
+        {/* Left: Monthly Award Showcase */}
         <div style={styles.leaderSection}>
-          <h2 style={styles.sectionTitle}>🏆 Live Rankings</h2>
-          <div style={styles.leaderGrid}>
-            <MiniLeaderboard title="King of MT" icon="👑" color="#F59E0B" data={top3.mt} valueKey="total_mt" unit="MT" />
-            <MiniLeaderboard title="Pipeline King" icon="🔮" color="#06B6D4" data={top3.inquiries} valueKey="total_inquiries" unit="MT" />
-            <MiniLeaderboard title="Market Opener" icon="🚀" color="#3B82F6" data={top3.clients} valueKey="total_new_clients" unit="clients" />
-            <MiniLeaderboard title="Premium Closer" icon="💰" color="#10B981" data={top3.price} valueKey="avg_closing_price" unit="₹/MT" prefix="₹" />
-            <MiniLeaderboard title="Speed Award" icon="⚡" color="#F97316" data={top3.tat} valueKey="avg_tat" unit="hrs avg" lowerIsBetter />
-          </div>
+          <h2 style={styles.sectionTitle}>🏆 Monthly Awards</h2>
+          <AwardShowcase leaderboard={leaderboard} />
         </div>
 
         {/* Right: Recognition feed + Shoutouts */}
@@ -189,25 +174,98 @@ export default function Dashboard() {
 
 // ——— Sub-components ———
 
-function MiniLeaderboard({ title, icon, color, data, valueKey, unit, prefix = '', lowerIsBetter }) {
-  const medals = ['🥇', '🥈', '🥉']
+const AWARDS = [
+  {
+    id: 'top_closer',
+    title: 'Top Closer',
+    icon: '👑',
+    accent: '#F59E0B',
+    valueKey: 'total_mt',
+    fmt: v => `${(+v).toFixed(1)} MT dispatched`,
+    desc: 'Highest MT brought in this month',
+  },
+  {
+    id: 'pipeline_builder',
+    title: 'Pipeline Builder',
+    icon: '🔥',
+    accent: '#EF4444',
+    valueKey: 'total_inquiries',
+    fmt: v => `${(+v).toFixed(1)} MT in pipeline`,
+    desc: 'Most MT worth of active inquiries',
+  },
+  {
+    id: 'new_account',
+    title: 'New Account Winner',
+    icon: '🌟',
+    accent: '#5AB947',
+    valueKey: 'total_new_clients',
+    fmt: v => `${v} new account${+v !== 1 ? 's' : ''} opened`,
+    desc: 'Most new customers added this month',
+  },
+  {
+    id: 'winback',
+    title: 'Win-Back Champion',
+    icon: '⚡',
+    accent: '#7DD4FC',
+    valueKey: 'total_winback_clients',
+    fmt: v => `${v} lost client${+v !== 1 ? 's' : ''} recovered`,
+    desc: 'Most previously lost customers brought back',
+  },
+  {
+    id: 'client_keeper',
+    title: 'Client Keeper',
+    icon: '🛡️',
+    accent: '#A78BFA',
+    valueKey: 'retention_rate',
+    fmt: v => `${(+v).toFixed(1)}% retention rate`,
+    desc: 'Best at keeping existing clients coming back',
+  },
+]
+
+function AwardShowcase({ leaderboard }) {
+  const getWinner = (award) => {
+    const sorted = [...leaderboard].sort(
+      (a, b) => parseFloat(b[award.valueKey] || 0) - parseFloat(a[award.valueKey] || 0)
+    )
+    const topVal = parseFloat(sorted[0]?.[award.valueKey] || 0)
+    if (!sorted.length || topVal === 0) return null
+    return {
+      names: sorted
+        .filter(r => parseFloat(r[award.valueKey] || 0) === topVal)
+        .map(r => r.full_name?.split(' ')[0] || '?')
+        .join(' & '),
+      value: topVal,
+    }
+  }
+
   return (
-    <div style={styles.miniBoard}>
-      <div style={{ ...styles.miniBoardHeader, borderLeft: `3px solid ${color}` }}>
-        <span style={styles.miniBoardIcon}>{icon}</span>
-        <span style={styles.miniBoardTitle}>{title}</span>
-      </div>
-      {data.map((person, i) => (
-        <div key={person.id} style={styles.miniBoardRow}>
-          <span style={styles.miniBoardMedal}>{medals[i]}</span>
-          <span style={styles.miniBoardName}>{person.full_name?.split(' ')[0]}</span>
-          <span style={{ ...styles.miniBoardValue, color }}>
-            {prefix}{parseFloat(person[valueKey] || 0).toFixed(1)} {unit}
-          </span>
-        </div>
+    <div style={aw.grid}>
+      {AWARDS.map(award => (
+        <AwardCard key={award.id} award={award} result={getWinner(award)} />
       ))}
-      {data.length === 0 && (
-        <div style={styles.noData}>No data yet</div>
+    </div>
+  )
+}
+
+function AwardCard({ award, result }) {
+  return (
+    <div style={{ ...aw.card, boxShadow: `0 4px 24px ${award.accent}22` }}>
+      <div style={aw.topRow}>
+        <span style={{ ...aw.icon, filter: `drop-shadow(0 0 6px ${award.accent}88)` }}>{award.icon}</span>
+        <span style={{ ...aw.badge, background: award.accent + '20', color: award.accent }}>AWARD</span>
+      </div>
+      <div style={{ ...aw.awardTitle, color: 'rgba(255,255,255,0.45)' }}>{award.title.toUpperCase()}</div>
+      {result ? (
+        <>
+          <div style={aw.winnerName}>{result.names}</div>
+          <div style={{ ...aw.stat, color: award.accent }}>{award.fmt(result.value)}</div>
+          <div style={aw.desc}>{award.desc}</div>
+        </>
+      ) : (
+        <>
+          <div style={aw.noWinner}>No winner yet</div>
+          <div style={aw.desc}>{award.desc}</div>
+        </>
       )}
     </div>
   )
@@ -423,60 +481,7 @@ const styles = {
     margin: '0 0 12px',
     letterSpacing: '0.02em',
   },
-  leaderGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-    gap: '12px',
-  },
-  miniBoard: {
-    background: '#FFFFFF',
-    borderRadius: '12px',
-    padding: '14px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-  },
-  miniBoardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    marginBottom: '10px',
-    paddingLeft: '8px',
-  },
-  miniBoardIcon: { fontSize: '14px' },
-  miniBoardTitle: {
-    fontSize: '11px',
-    fontWeight: '800',
-    color: '#374151',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-  miniBoardRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '5px 0',
-    borderBottom: '1px solid #F3F4F6',
-  },
-  miniBoardMedal: { fontSize: '14px', width: '18px' },
-  miniBoardName: {
-    flex: 1,
-    fontSize: '12px',
-    fontWeight: '600',
-    color: '#374151',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  miniBoardValue: {
-    fontSize: '11px',
-    fontWeight: '700',
-    whiteSpace: 'nowrap',
-  },
-  noData: {
-    fontSize: '12px',
-    color: '#9CA3AF',
-    textAlign: 'center',
-    padding: '8px',
-  },
+  leaderGrid: {},
   // Feed
   shoutoutCard: {
     background: 'linear-gradient(135deg, #012D4C, #015998)',
@@ -602,5 +607,75 @@ const styles = {
     padding: '2px 6px',
     borderRadius: '4px',
     fontWeight: '700',
+  },
+}
+
+// ——— Award card styles ———
+const aw = {
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+    gap: '12px',
+  },
+  card: {
+    background: 'linear-gradient(145deg, #012D4C 0%, #01243f 100%)',
+    borderRadius: '14px',
+    padding: '18px 16px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    border: '1px solid rgba(255,255,255,0.06)',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  topRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: '4px',
+  },
+  icon: {
+    fontSize: '28px',
+    lineHeight: 1,
+  },
+  badge: {
+    fontSize: '9px',
+    fontWeight: '800',
+    letterSpacing: '0.1em',
+    padding: '3px 7px',
+    borderRadius: '4px',
+  },
+  awardTitle: {
+    fontSize: '10px',
+    fontWeight: '700',
+    letterSpacing: '0.08em',
+    fontFamily: "'Montserrat', sans-serif",
+  },
+  winnerName: {
+    fontSize: '22px',
+    fontWeight: '900',
+    color: '#FFFFFF',
+    lineHeight: 1.1,
+    fontFamily: "'Montserrat', sans-serif",
+    marginTop: '2px',
+  },
+  stat: {
+    fontSize: '13px',
+    fontWeight: '700',
+    fontFamily: "'Montserrat', sans-serif",
+  },
+  desc: {
+    fontSize: '11px',
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: '500',
+    lineHeight: 1.4,
+    marginTop: '2px',
+  },
+  noWinner: {
+    fontSize: '14px',
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.3)',
+    marginTop: '6px',
+    fontFamily: "'Montserrat', sans-serif",
   },
 }
