@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 const C = { prussian: '#012D4C', electric: '#015998', green: '#5AB947', white: '#FFFFFF', border: '#CBD5E1', text: '#1E293B', muted: '#64748B', error: '#EF4444', success: '#10B981', bg: '#F8FAFC' }
@@ -29,16 +29,20 @@ export default function UserManager() {
   const [newUser, setNewUser]       = useState(EMPTY_FORM)
   const [addError, setAddError]     = useState('')
   const [adding, setAdding]         = useState(false)
+  const [filterActive, setFilterActive] = useState('active')
 
-  const load = () => {
-    supabase.from('profiles').select('*').order('full_name')
-      .then(({ data, error }) => {
-        if (error) console.error('UserManager load error:', error)
-        setUsers(data || [])
-        setLoading(false)
-      })
-  }
-  useEffect(() => { load() }, [])
+  const load = useCallback(() => {
+    setLoading(true)
+    let q = supabase.from('profiles').select('*').order('full_name')
+    if (filterActive === 'active') q = q.eq('is_active', true)
+    q.then(({ data, error }) => {
+      if (error) console.error('UserManager load error:', error)
+      setUsers(data || [])
+      setLoading(false)
+    })
+  }, [filterActive])
+
+  useEffect(() => { load() }, [load])
 
   // ── Permission toggle — saves immediately ──
   const togglePerm = async (user, key) => {
@@ -62,48 +66,50 @@ export default function UserManager() {
     else setGlobalMsg({ type: 'error', msg: error.message })
   }
 
-  // ── Add user: signUp then insert profile ──
+  // ── Add user via Netlify function (service role, no confirmation email) ──
   const handleAdd = async (e) => {
     e.preventDefault()
     setAddError('')
     setAdding(true)
 
-    // 1. Create auth user
-    const { data: authData, error: authErr } = await supabase.auth.signUp({
-      email: newUser.email,
-      password: newUser.password,
-      options: { data: { full_name: newUser.full_name } },
-    })
-
-    if (authErr) {
+    // Pass the session token so the function can verify the caller is an admin
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
       setAdding(false)
-      return setAddError(authErr.message)
+      return setAddError('Your session has expired. Please sign in again.')
     }
 
-    const uid = authData?.user?.id
-    if (!uid) {
+    let res, json
+    try {
+      res = await fetch('/.netlify/functions/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          email:     newUser.email,
+          password:  newUser.password,
+          full_name: newUser.full_name,
+          role:      newUser.role,
+          team:      newUser.team || null,
+        }),
+      })
+      json = await res.json()
+    } catch (networkErr) {
       setAdding(false)
-      return setAddError('Auth user created but no ID returned. Check Supabase Auth settings.')
+      return setAddError('Network error — could not reach the server. Please try again.')
     }
-
-    // 2. Insert profile row
-    const { error: profileErr } = await supabase.from('profiles').insert({
-      id: uid,
-      full_name: newUser.full_name,
-      email: newUser.email,
-      role: newUser.role,
-      team: newUser.team || null,
-      is_active: true,
-    })
 
     setAdding(false)
-    if (profileErr) {
-      return setAddError(`Auth user created but profile insert failed: ${profileErr.message}`)
+
+    if (!res.ok || !json.success) {
+      return setAddError(json?.error || 'An unexpected error occurred. Please try again.')
     }
 
     setShowModal(false)
     setNewUser(EMPTY_FORM)
-    setGlobalMsg({ type: 'success', msg: `✅ ${newUser.full_name} created successfully.` })
+    setGlobalMsg({ type: 'success', msg: `✅ ${json.full_name} added successfully. They can sign in immediately — no confirmation email will be sent.` })
     load()
   }
 
@@ -115,9 +121,27 @@ export default function UserManager() {
       <div style={s.hdr}>
         <div>
           <h1 style={s.title}>Manage Users</h1>
-          <p style={s.sub}>{users.length} users — click a row to expand permissions</p>
+          <p style={s.sub}>
+            {users.length} {filterActive === 'active' ? 'active' : 'total'} user{users.length !== 1 ? 's' : ''} — click a row to expand permissions
+          </p>
         </div>
-        <button style={s.addBtn} onClick={() => { setShowModal(true); setAddError('') }}>+ Add User</button>
+        <div style={s.hdrActions}>
+          <div style={s.filterToggle}>
+            {[
+              { key: 'active', label: 'Active' },
+              { key: 'all',    label: 'All users' },
+            ].map(f => (
+              <button
+                key={f.key}
+                style={{ ...s.filterBtn, ...(filterActive === f.key ? s.filterBtnActive : {}) }}
+                onClick={() => setFilterActive(f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <button style={s.addBtn} onClick={() => { setShowModal(true); setAddError('') }}>+ Add User</button>
+        </div>
       </div>
 
       {globalMsg && (
@@ -213,7 +237,11 @@ export default function UserManager() {
                   </select>
                 </div>
               </div>
-              {addError && <div style={{ color: C.error, fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>❌ {addError}</div>}
+              {addError && (
+                <div style={{ background: '#FEF2F2', border: `1.5px solid ${C.error}`, color: '#991B1B', borderRadius: 8, padding: '10px 14px', fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>
+                  ❌ {addError}
+                </div>
+              )}
               <button type="submit" style={s.btn} disabled={adding}>
                 {adding ? 'Creating…' : 'Create User'}
               </button>
@@ -228,10 +256,14 @@ export default function UserManager() {
 const s = {
   page:       { padding: '32px 24px', fontFamily: 'Montserrat, sans-serif', maxWidth: 960, margin: '0 auto' },
   center:     { textAlign: 'center', padding: 60, color: C.muted, fontFamily: 'Montserrat, sans-serif' },
-  hdr:        { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  title:      { fontSize: 26, fontWeight: 700, color: C.prussian, margin: 0 },
-  sub:        { color: C.muted, marginTop: 4, fontSize: 14 },
-  addBtn:     { padding: '9px 20px', background: C.prussian, color: C.white, border: 'none', borderRadius: 8, fontFamily: 'Montserrat, sans-serif', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
+  hdr:          { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+  title:        { fontSize: 26, fontWeight: 700, color: C.prussian, margin: 0 },
+  sub:          { color: C.muted, marginTop: 4, fontSize: 14 },
+  hdrActions:   { display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 },
+  filterToggle: { display: 'flex', borderRadius: 8, border: `1.5px solid ${C.border}`, overflow: 'hidden' },
+  filterBtn:    { padding: '7px 14px', border: 'none', background: C.white, color: C.muted, fontSize: 13, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer' },
+  filterBtnActive: { background: C.prussian, color: C.white },
+  addBtn:       { padding: '9px 20px', background: C.prussian, color: C.white, border: 'none', borderRadius: 8, fontFamily: 'Montserrat, sans-serif', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
   card:       { background: C.white, borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.08)', overflow: 'hidden' },
   alert:      { padding: '12px 16px', borderRadius: 8, border: '1.5px solid', fontSize: 14 },
   userRow:    { display: 'flex', alignItems: 'center', gap: 12, padding: '13px 20px', cursor: 'pointer', borderBottom: `1px solid ${C.border}` },

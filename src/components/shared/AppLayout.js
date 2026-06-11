@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { LEVEL_CONFIG } from '../../lib/supabase'
@@ -24,6 +24,17 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (!mobile) setMobileOpen(false)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const levelConfig = profile ? LEVEL_CONFIG[profile.current_level || 'Trainee'] : LEVEL_CONFIG.Trainee
 
@@ -39,34 +50,51 @@ export default function AppLayout() {
     !item.permission || can(item.permission)
   )
 
+  // On mobile the sidebar is always full-width, so labels are always visible.
+  // On desktop labels are visible only when sidebarOpen.
+  const showLabels = isMobile || sidebarOpen
+
   return (
     <div style={styles.root}>
-      {/* Mobile overlay */}
-      {mobileOpen && (
+      {/* Mobile overlay — only rendered and visible on mobile when drawer is open */}
+      {isMobile && mobileOpen && (
         <div style={styles.overlay} onClick={() => setMobileOpen(false)} />
       )}
 
       {/* Sidebar */}
       <aside style={{
         ...styles.sidebar,
-        width: sidebarOpen ? '240px' : '64px',
-        transform: mobileOpen ? 'translateX(0)' : undefined,
+        ...(isMobile
+          ? {
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              height: '100vh',
+              width: '240px',
+              transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+              zIndex: 50,
+            }
+          : {
+              width: sidebarOpen ? '240px' : '64px',
+            }
+        ),
       }}>
         {/* Logo */}
         <div style={styles.sidebarLogo}>
           <div style={styles.logoMark}>M</div>
-          {sidebarOpen && (
+          {showLabels && (
             <div style={styles.logoText}>
               <div style={styles.logoTitle}>MEIL</div>
               <div style={styles.logoSub}>Scoreboard</div>
             </div>
           )}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            style={styles.collapseBtn}
-          >
-            {sidebarOpen ? '◀' : '▶'}
-          </button>
+          {isMobile ? (
+            <button onClick={() => setMobileOpen(false)} style={styles.collapseBtn}>✕</button>
+          ) : (
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={styles.collapseBtn}>
+              {sidebarOpen ? '◀' : '▶'}
+            </button>
+          )}
         </div>
 
         {/* Main nav */}
@@ -83,15 +111,15 @@ export default function AppLayout() {
               onClick={() => setMobileOpen(false)}
             >
               <span style={styles.navIcon}>{item.icon}</span>
-              {sidebarOpen && <span style={styles.navLabel}>{item.label}</span>}
+              {showLabels && <span style={styles.navLabel}>{item.label}</span>}
             </NavLink>
           ))}
 
           {/* Admin section */}
           {visibleAdmin.length > 0 && (
             <>
-              {sidebarOpen && <div style={styles.navSection}>ADMIN</div>}
-              {!sidebarOpen && <div style={styles.navDivider} />}
+              {showLabels && <div style={styles.navSection}>ADMIN</div>}
+              {!showLabels && <div style={styles.navDivider} />}
               {visibleAdmin.map(item => (
                 <NavLink
                   key={item.path}
@@ -103,7 +131,7 @@ export default function AppLayout() {
                   onClick={() => setMobileOpen(false)}
                 >
                   <span style={styles.navIcon}>{item.icon}</span>
-                  {sidebarOpen && <span style={styles.navLabel}>{item.label}</span>}
+                  {showLabels && <span style={styles.navLabel}>{item.label}</span>}
                 </NavLink>
               ))}
             </>
@@ -116,7 +144,7 @@ export default function AppLayout() {
             <div style={{ ...styles.userAvatar, background: levelConfig.color }}>
               {profile?.full_name?.charAt(0) || '?'}
             </div>
-            {sidebarOpen && (
+            {showLabels && (
               <div style={styles.userDetails}>
                 <div style={styles.userName}>{profile?.full_name}</div>
                 <div style={styles.userRole}>
@@ -125,7 +153,7 @@ export default function AppLayout() {
               </div>
             )}
           </div>
-          {sidebarOpen && (
+          {showLabels && (
             <button onClick={handleSignOut} style={styles.signOutBtn}>
               Sign out
             </button>
@@ -135,14 +163,16 @@ export default function AppLayout() {
 
       {/* Main content */}
       <main style={styles.main}>
-        {/* Mobile header */}
-        <div style={styles.mobileHeader}>
-          <button onClick={() => setMobileOpen(true)} style={styles.menuBtn}>☰</button>
-          <div style={styles.mobileTitle}>MEIL Scoreboard</div>
-          <div style={styles.userAvatar}>
-            {profile?.full_name?.charAt(0) || '?'}
+        {/* Mobile header — only rendered on mobile */}
+        {isMobile && (
+          <div style={styles.mobileHeader}>
+            <button onClick={() => setMobileOpen(true)} style={styles.menuBtn}>☰</button>
+            <div style={styles.mobileTitle}>MEIL Scoreboard</div>
+            <div style={{ ...styles.userAvatar, background: levelConfig.color }}>
+              {profile?.full_name?.charAt(0) || '?'}
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={styles.content}>
           <Outlet />
@@ -165,15 +195,13 @@ const styles = {
     inset: 0,
     background: 'rgba(0,0,0,0.5)',
     zIndex: 40,
-    display: 'none',
-    '@media (max-width: 768px)': { display: 'block' }
   },
   sidebar: {
     background: '#012D4C',
     display: 'flex',
     flexDirection: 'column',
     flexShrink: 0,
-    transition: 'width 0.25s ease',
+    transition: 'width 0.25s ease, transform 0.25s ease',
     overflow: 'hidden',
     zIndex: 50,
     position: 'relative',
@@ -320,12 +348,11 @@ const styles = {
     overflow: 'hidden',
   },
   mobileHeader: {
-    display: 'none',
+    display: 'flex',
     alignItems: 'center',
     padding: '12px 16px',
     background: '#012D4C',
     gap: '12px',
-    '@media (max-width: 768px)': { display: 'flex' }
   },
   menuBtn: {
     background: 'transparent',
