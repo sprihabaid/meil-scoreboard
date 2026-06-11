@@ -102,7 +102,9 @@ export default function DataEntry() {
   useEffect(() => {
     supabase
       .from('profiles')
-      .select('id, full_name, role')
+      .select('id, full_name')
+      .eq('role', 'salesperson')
+      .eq('is_active', true)
       .order('full_name')
       .then(({ data, error }) => {
         if (error) console.error('profiles fetch error:', error)
@@ -168,7 +170,7 @@ export default function DataEntry() {
             <select style={s.select} value={selectedUser} onChange={e => setSelectedUser(e.target.value)} required>
               <option value="">— Select person —</option>
               {salespersons.map(p => (
-                <option key={p.id} value={p.id}>{p.full_name} ({p.role})</option>
+                <option key={p.id} value={p.id}>{p.full_name}</option>
               ))}
             </select>
           </div>
