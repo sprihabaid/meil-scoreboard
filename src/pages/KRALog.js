@@ -32,15 +32,26 @@ const STATUS_STYLE = {
   pending: { bg: '#F3F4F6', color: '#6B7280', label: 'Pending'   },
 }
 
+function calcTargetStatus(actual, target, unit) {
+  if (target == null || target === '') return null
+  const a = parseFloat(actual) || 0
+  const t = parseFloat(target)
+  if (unit === 'yes/no') return a >= 1 ? 'green' : 'red'
+  if (a >= t) return 'green'
+  if (a >= t * 0.7) return 'amber'
+  return 'red'
+}
+
 export default function KRALog() {
-  const { user, profile, can, isAdmin, isSuperAdmin } = useAuth()
-  const [tab, setTab] = useState('log')          // 'log' | 'approve'
-  const [kras, setKras] = useState([])
+  const { user, profile, can } = useAuth()
+  const [tab, setTab]       = useState('log')
+  const [kras, setKras]     = useState([])
   const [pending, setPending] = useState([])
-  const [form, setForm] = useState({})
+  const [form, setForm]     = useState({})
   const [logDate, setLogDate] = useState(today())
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(null)
+  const [myTargets, setMyTargets] = useState({}) // { kra_name: { target_value, target_unit } }
 
   const myTeam = profile?.team
   const isAdminRole = profile?.role === 'superadmin' || profile?.role === 'admin'
@@ -65,12 +76,26 @@ export default function KRALog() {
       .then(({ data }) => setPending(data || []))
   }, [])
 
+  const loadMyTargets = useCallback(() => {
+    if (!user) return
+    const month = firstOfMonth()
+    supabase.from('kra_targets')
+      .select('kra_name, target_value, target_unit')
+      .eq('user_id', user.id)
+      .eq('month', month)
+      .then(({ data }) => {
+        const map = {}
+        ;(data || []).forEach(t => { map[t.kra_name] = { target_value: t.target_value, target_unit: t.target_unit } })
+        setMyTargets(map)
+      })
+  }, [user])
+
   useEffect(() => {
     loadMyKras()
+    loadMyTargets()
     if (can('approve_kra')) loadPending()
-  }, [loadMyKras, loadPending, can])
+  }, [loadMyKras, loadMyTargets, loadPending, can])
 
-  // Pre-fill form from existing logs for selected date
   useEffect(() => {
     if (!user) return
     const existing = kras.filter(k => k.log_date === logDate)
@@ -113,7 +138,15 @@ export default function KRALog() {
     }
   }
 
-  // Group my kra history by date
+  // Build monthly MTD totals per KRA
+  const mtdTotals = {}
+  kras.forEach(k => {
+    mtdTotals[k.kra_name] = (mtdTotals[k.kra_name] || 0) + (parseFloat(k.actual_value) || 0)
+  })
+
+  // Check if any targets are set this month
+  const hasTargets = Object.keys(myTargets).length > 0
+
   const byDate = {}
   kras.forEach(k => { if (!byDate[k.log_date]) byDate[k.log_date] = []; byDate[k.log_date].push(k) })
 
@@ -141,21 +174,30 @@ export default function KRALog() {
               <input type="date" style={s.dateInput} value={logDate} max={today()} onChange={e => setLogDate(e.target.value)} />
             </div>
             <div style={s.kraGrid}>
-              {kraList.map(k => (
-                <div key={k.key} style={s.kraField}>
-                  <label style={s.label}>{k.label}<span style={s.unit}> ({k.unit})</span></label>
-                  {k.unit === 'yes/no' ? (
-                    <select style={s.input} value={form[k.key] ?? ''} onChange={e => setForm(f => ({ ...f, [k.key]: e.target.value }))}>
-                      <option value="">—</option>
-                      <option value="1">Yes</option>
-                      <option value="0">No</option>
-                    </select>
-                  ) : (
-                    <input type="number" style={s.input} min="0" step="0.1" placeholder="e.g. 3"
-                      value={form[k.key] ?? ''} onChange={e => setForm(f => ({ ...f, [k.key]: e.target.value }))} />
-                  )}
-                </div>
-              ))}
+              {kraList.map(k => {
+                const target = myTargets[k.key]
+                return (
+                  <div key={k.key} style={s.kraField}>
+                    <label style={s.label}>
+                      {k.label}
+                      <span style={s.unit}> ({k.unit})</span>
+                      {target && (
+                        <span style={s.targetHint}>Target: {target.target_value}/mo</span>
+                      )}
+                    </label>
+                    {k.unit === 'yes/no' ? (
+                      <select style={s.input} value={form[k.key] ?? ''} onChange={e => setForm(f => ({ ...f, [k.key]: e.target.value }))}>
+                        <option value="">—</option>
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                      </select>
+                    ) : (
+                      <input type="number" style={s.input} min="0" step="0.1" placeholder="e.g. 3"
+                        value={form[k.key] ?? ''} onChange={e => setForm(f => ({ ...f, [k.key]: e.target.value }))} />
+                    )}
+                  </div>
+                )
+              })}
             </div>
             {status && (
               <div style={{ ...s.alert, color: status.type === 'success' ? C.green : C.error, background: status.type === 'success' ? '#ECFDF5' : '#FEF2F2', borderColor: status.type === 'success' ? C.green : C.error }}>
@@ -165,8 +207,41 @@ export default function KRALog() {
             <button type="submit" style={s.btn} disabled={saving}>{saving ? 'Submitting…' : 'Submit KRA Log'}</button>
           </form>
 
+          {/* ── Monthly KRA Progress vs Targets ── */}
+          {hasTargets && (
+            <div style={s.card}>
+              <div style={s.sectionLabel}>Monthly KRA Progress — {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</div>
+              <div style={s.progressGrid}>
+                {kraList.map(k => {
+                  const target = myTargets[k.key]
+                  if (!target) return null
+                  const mtd = mtdTotals[k.key] || 0
+                  const t = parseFloat(target.target_value)
+                  const pct = t > 0 ? Math.min((mtd / t) * 100, 100) : 0
+                  const statusKey = calcTargetStatus(mtd, t, k.unit)
+                  const st = STATUS_STYLE[statusKey] || STATUS_STYLE.pending
+                  return (
+                    <div key={k.key} style={s.progressItem}>
+                      <div style={s.progressHeader}>
+                        <span style={s.progressLabel}>{k.label}</span>
+                        <span style={{ background: st.bg, color: st.color, borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>{st.label}</span>
+                      </div>
+                      <div style={s.progressBar}>
+                        <div style={{ ...s.progressFill, width: `${pct}%`, background: statusKey === 'green' ? C.green : statusKey === 'amber' ? C.amber : C.error }} />
+                      </div>
+                      <div style={s.progressNumbers}>
+                        <span style={{ fontWeight: 700, color: C.prussian }}>{k.unit === 'yes/no' ? (mtd >= 1 ? 'Yes' : 'No') : mtd}</span>
+                        <span style={{ color: C.muted }}>/ {k.unit === 'yes/no' ? 'Yes' : `${t} ${target.target_unit}`}</span>
+                      </div>
+                    </div>
+                  )
+                }).filter(Boolean)}
+              </div>
+            </div>
+          )}
+
           {/* History */}
-          <div style={s.sectionLabel} >This Month's History</div>
+          <div style={s.sectionLabel}>This Month's History</div>
           {Object.keys(byDate).length === 0 ? (
             <div style={s.empty}>No KRA logs this month yet.</div>
           ) : Object.entries(byDate).sort((a, b) => b[0].localeCompare(a[0])).map(([date, logs]) => (
@@ -174,11 +249,20 @@ export default function KRALog() {
               <div style={s.histDate}>{date}</div>
               <div style={s.histGrid}>
                 {logs.map(l => {
-                  const st = STATUS_STYLE[l.status] || STATUS_STYLE.pending
+                  const kra = kraList.find(k => k.key === l.kra_name)
+                  const target = myTargets[l.kra_name]
+                  // Use target-based status if target is set, otherwise use approval status
+                  const displayStatus = target
+                    ? (calcTargetStatus(l.actual_value, target.target_value, kra?.unit) || l.status)
+                    : l.status
+                  const st = STATUS_STYLE[displayStatus] || STATUS_STYLE.pending
                   return (
                     <div key={l.id} style={s.histItem}>
-                      <span style={s.histKra}>{kraList.find(k => k.key === l.kra_name)?.label || l.kra_name}</span>
+                      <span style={s.histKra}>{kra?.label || l.kra_name}</span>
                       <span style={s.histVal}>{l.actual_value ?? '—'}</span>
+                      {target && (
+                        <span style={{ fontSize: 11, color: C.muted, width: 60 }}>/ {target.target_value}</span>
+                      )}
                       <span style={{ background: st.bg, color: st.color, borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>{st.label}</span>
                     </div>
                   )
@@ -240,16 +324,26 @@ const s = {
   kraField: { display: 'flex', flexDirection: 'column', gap: 6 },
   label: { fontSize: 11, fontWeight: 700, color: C.prussian, textTransform: 'uppercase', letterSpacing: '0.04em' },
   unit: { fontWeight: 400, color: C.muted, textTransform: 'none' },
+  targetHint: { display: 'block', fontWeight: 500, color: C.electric, textTransform: 'none', letterSpacing: 0, fontSize: 10, marginTop: 1 },
   input: { padding: '9px 12px', borderRadius: 7, border: `1.5px solid ${C.border}`, fontSize: 14, fontFamily: 'Montserrat, sans-serif', outline: 'none' },
   btn: { padding: '11px 28px', background: C.prussian, color: C.white, border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, fontFamily: 'Montserrat, sans-serif', cursor: 'pointer' },
   alert: { padding: '10px 14px', borderRadius: 8, border: '1.5px solid', fontSize: 14, marginBottom: 12 },
+  // Monthly progress
+  progressGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 },
+  progressItem: { background: C.bg, borderRadius: 8, padding: '12px 14px' },
+  progressHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  progressLabel: { fontSize: 12, fontWeight: 600, color: C.text },
+  progressBar: { height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
+  progressFill: { height: '100%', borderRadius: 3, transition: 'width 0.4s ease' },
+  progressNumbers: { display: 'flex', gap: 4, fontSize: 12 },
+  // History
   empty: { color: C.muted, fontSize: 14, padding: '16px 0', textAlign: 'center' },
   histCard: { background: C.white, borderRadius: 10, padding: '14px 18px', boxShadow: '0 1px 6px rgba(0,0,0,0.07)', marginBottom: 10 },
   histDate: { fontWeight: 700, color: C.prussian, fontSize: 13, marginBottom: 10 },
   histGrid: { display: 'flex', flexDirection: 'column', gap: 6 },
   histItem: { display: 'flex', alignItems: 'center', gap: 10 },
   histKra: { flex: 1, fontSize: 13, color: C.text },
-  histVal: { fontWeight: 700, fontSize: 13, color: C.prussian, width: 60, textAlign: 'right' },
+  histVal: { fontWeight: 700, fontSize: 13, color: C.prussian, width: 50, textAlign: 'right' },
   approvalRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' },
   approvalInfo: { flex: 1, fontSize: 13, color: C.text },
   approvalValue: { fontSize: 13, color: C.muted },

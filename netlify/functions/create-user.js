@@ -73,20 +73,24 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid request body.' }) }
   }
 
-  const { email, password, full_name, role, team } = body
+  const { email, full_name, role, team } = body
 
-  if (!email || !password || !full_name || !role) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Email, password, full name, and role are all required.' }) }
+  if (!email || !full_name || !role) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Email, full name, and role are all required.' }) }
   }
 
-  // ── 3. Create auth user (email pre-confirmed, no email sent) ─────────────────
+  // ── 3. Auto-generate temporary password ──────────────────────────────────────
+  const digits = String(Math.floor(1000 + Math.random() * 9000))
+  const tempPassword = `Meil@${digits}`
+
+  // ── 4. Create auth user (email pre-confirmed, no email sent) ─────────────────
   const adminClient = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
   const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
     email,
-    password,
+    password: tempPassword,
     email_confirm: true,
     user_metadata: { full_name },
   })
@@ -112,7 +116,7 @@ exports.handler = async (event) => {
 
   const uid = authData.user.id
 
-  // ── 4. Insert profile row ────────────────────────────────────────────────────
+  // ── 5. Insert profile row ────────────────────────────────────────────────────
   const { error: insertError } = await adminClient.from('profiles').insert({
     id: uid,
     full_name,
@@ -138,6 +142,6 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers,
-    body: JSON.stringify({ success: true, userId: uid, full_name }),
+    body: JSON.stringify({ success: true, userId: uid, full_name, tempPassword }),
   }
 }

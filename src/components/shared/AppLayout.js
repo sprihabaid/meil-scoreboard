@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { path: '/team',          label: 'Team Panel',    icon: '🎯', permission: 'view_team_panel' },
   { path: '/kra',           label: 'KRA Log',       icon: '✅', permission: null },
   { path: '/hall-of-fame',  label: 'Hall of Fame',  icon: '🌟', permission: null },
+  { path: '/reports',       label: 'Reports',       icon: '📈', permission: 'export_reports' },
 ]
 
 const ADMIN_NAV_ITEMS = [

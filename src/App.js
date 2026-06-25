@@ -13,6 +13,7 @@ import DataEntry from './pages/admin/DataEntry'
 import TargetManager from './pages/admin/TargetManager'
 import UserManager from './pages/admin/UserManager'
 import AuditLog from './pages/admin/AuditLog'
+import Reports from './pages/Reports'
 
 function ProtectedRoute({ children, permission }) {
   const { user, loading, can } = useAuth()
@@ -106,6 +107,12 @@ function AppRoutes() {
         <Route path="admin/audit" element={
           <ProtectedRoute permission="view_audit_log">
             <AuditLog />
+          </ProtectedRoute>
+        } />
+
+        <Route path="reports" element={
+          <ProtectedRoute permission="export_reports">
+            <Reports />
           </ProtectedRoute>
         } />
       </Route>

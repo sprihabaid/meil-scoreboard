@@ -11,6 +11,24 @@ const PRODUCTS = ['Slitting', 'Cutting', 'Assembly']
 
 const EMPTY = { user_id: '', plant: 'Reengus', unit: 'Unit 1 (Rd. No. 1)', category: 'CRGO Steel', final_product: 'Slitting', target_mt: '', effective_from: today() }
 
+const ALL_KRAS = [
+  { key: 'meetings_done',       label: 'Meetings Done',             unit: 'count',  team: 'frontend' },
+  { key: 'inquiries_generated', label: 'Inquiries Generated',       unit: 'count',  team: 'frontend' },
+  { key: 'lost_client_visits',  label: 'Lost Client Visits',        unit: 'count',  team: 'frontend' },
+  { key: 'prospect_visits',     label: 'Prospect Visits',           unit: 'count',  team: 'frontend' },
+  { key: 'crm_updated',         label: 'CRM Updated',               unit: 'yes/no', team: 'frontend' },
+  { key: 'tour_plan',           label: 'Tour Plan Submitted',       unit: 'yes/no', team: 'frontend' },
+  { key: 'new_client_meetings', label: 'New Client Meetings',       unit: 'count',  team: 'frontend' },
+  { key: 'orders_in_crm',       label: 'Orders in CRM',             unit: 'count',  team: 'backend' },
+  { key: 'delivery_adherence',  label: 'Delivery Adherence',        unit: '%',      team: 'backend' },
+  { key: 'quality_complaints',  label: 'Quality Complaints',        unit: 'count',  team: 'backend' },
+  { key: 'post_delivery_calls', label: 'Post-Delivery Calls',       unit: 'count',  team: 'backend' },
+  { key: 'client_feedback',     label: 'Client Feedback Logged',    unit: 'count',  team: 'backend' },
+  { key: 'whatsapp_group',      label: 'WhatsApp Group Active',     unit: 'yes/no', team: 'backend' },
+  { key: 'overdue_accounts',    label: 'Overdue Accounts Reviewed', unit: 'count',  team: 'backend' },
+  { key: 'payment_followups',   label: 'Payment Follow-ups',        unit: 'count',  team: 'backend' },
+]
+
 export default function TargetManager() {
   const { profile } = useAuth()
   const [users, setUsers] = useState([])
@@ -20,14 +38,34 @@ export default function TargetManager() {
   const [status, setStatus] = useState(null)
   const [filterUser, setFilterUser] = useState('')
 
+  // KRA targets state
+  const [kraForm, setKraForm]         = useState({ user_id: '', month: firstOfMonth() })
+  const [kraValues, setKraValues]     = useState({})
+  const [kraStatus, setKraStatus]     = useState(null)
+  const [savingKra, setSavingKra]     = useState(false)
+  const [kraTargets, setKraTargets]   = useState([])
+
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name').order('full_name')
-      .then(({ data, error }) => {
-        if (error) console.error('TargetManager profiles error:', error)
-        setUsers(data || [])
-      })
+    supabase.from('profiles').select('id, full_name, team').eq('role', 'salesperson').eq('is_active', true).order('full_name')
+      .then(({ data }) => setUsers(data || []))
     loadTargets()
   }, [])
+
+  // Load existing KRA targets whenever user or month changes
+  useEffect(() => {
+    if (!kraForm.user_id || !kraForm.month) { setKraValues({}); setKraTargets([]); return }
+    supabase.from('kra_targets')
+      .select('*')
+      .eq('user_id', kraForm.user_id)
+      .eq('month', kraForm.month)
+      .then(({ data }) => {
+        const existing = data || []
+        setKraTargets(existing)
+        const vals = {}
+        existing.forEach(t => { vals[t.kra_name] = t.target_value })
+        setKraValues(vals)
+      })
+  }, [kraForm.user_id, kraForm.month])
 
   const loadTargets = () => {
     supabase.from('targets')
@@ -50,15 +88,10 @@ export default function TargetManager() {
     setSaving(true)
     setStatus(null)
 
-    // Close any active target for same user+plant+unit+category+product
     await supabase.from('targets')
       .update({ effective_to: form.effective_from })
-      .eq('user_id', form.user_id)
-      .eq('plant', form.plant)
-      .eq('unit', form.unit)
-      .eq('category', form.category)
-      .eq('final_product', form.final_product)
-      .is('effective_to', null)
+      .eq('user_id', form.user_id).eq('plant', form.plant).eq('unit', form.unit)
+      .eq('category', form.category).eq('final_product', form.final_product).is('effective_to', null)
 
     const { error } = await supabase.from('targets').insert({
       user_id: form.user_id, plant: form.plant, unit: form.unit,
@@ -76,16 +109,46 @@ export default function TargetManager() {
     loadTargets()
   }
 
+  // Save all KRA targets for selected user + month (upsert)
+  const handleKraSave = async (e) => {
+    e.preventDefault()
+    if (!kraForm.user_id || !kraForm.month) return setKraStatus({ type: 'error', msg: 'Select a salesperson and month.' })
+    setSavingKra(true)
+    setKraStatus(null)
+
+    const upserts = ALL_KRAS
+      .filter(k => kraValues[k.key] !== undefined && kraValues[k.key] !== '')
+      .map(k => ({
+        user_id: kraForm.user_id,
+        kra_name: k.key,
+        target_value: parseFloat(kraValues[k.key]) || 0,
+        target_unit: k.unit,
+        month: kraForm.month,
+        set_by: profile.id,
+      }))
+
+    if (upserts.length === 0) {
+      setSavingKra(false)
+      return setKraStatus({ type: 'error', msg: 'Enter at least one target value.' })
+    }
+
+    const { error } = await supabase.from('kra_targets').upsert(upserts, { onConflict: 'user_id,kra_name,month' })
+    setSavingKra(false)
+    if (error) return setKraStatus({ type: 'error', msg: error.message })
+    setKraStatus({ type: 'success', msg: `Saved ${upserts.length} KRA target${upserts.length !== 1 ? 's' : ''} for ${users.find(u => u.id === kraForm.user_id)?.full_name}.` })
+  }
+
   const visibleTargets = filterUser ? targets.filter(t => t.user_id === filterUser) : targets
+  const selectedUserProfile = users.find(u => u.id === kraForm.user_id)
 
   return (
     <div style={s.page}>
       <h1 style={s.title}>Target Manager</h1>
-      <p style={s.sub}>Set MT targets per salesperson, plant, unit, category, and product.</p>
+      <p style={s.sub}>Set MT targets and individual KRA targets per salesperson.</p>
 
-      {/* Form */}
+      {/* ── MT Targets Form ── */}
       <form onSubmit={handleSubmit} style={s.card}>
-        <div style={s.sectionLabel}>Set New Target</div>
+        <div style={s.sectionLabel}>Set New MT Target</div>
         <div style={s.grid}>
           <div style={s.field}>
             <label style={s.label}>Salesperson</label>
@@ -127,18 +190,102 @@ export default function TargetManager() {
             <input type="date" style={s.input} value={form.effective_from} onChange={e => set('effective_from', e.target.value)} required />
           </div>
         </div>
-
         {status && (
           <div style={{ ...s.alert, color: status.type === 'success' ? C.success : C.error, background: status.type === 'success' ? '#ECFDF5' : '#FEF2F2', borderColor: status.type === 'success' ? C.success : C.error }}>
             {status.type === 'success' ? '✅' : '❌'} {status.msg}
           </div>
         )}
-        <button type="submit" style={s.btn} disabled={saving}>{saving ? 'Saving…' : 'Set Target'}</button>
+        <button type="submit" style={s.btn} disabled={saving}>{saving ? 'Saving…' : 'Set MT Target'}</button>
       </form>
 
-      {/* Existing targets */}
+      {/* ── KRA Targets Form ── */}
+      <form onSubmit={handleKraSave} style={{ ...s.card, marginTop: 24 }}>
+        <div style={s.sectionLabel}>KRA Targets</div>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 16, marginTop: -8 }}>
+          Set monthly KRA targets per individual. Leave a field blank to keep the existing target unchanged.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+          <div style={s.field}>
+            <label style={s.label}>Salesperson</label>
+            <select style={s.select} value={kraForm.user_id} onChange={e => setKraForm(f => ({ ...f, user_id: e.target.value }))} required>
+              <option value="">— Select —</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+            </select>
+          </div>
+          <div style={s.field}>
+            <label style={s.label}>Month</label>
+            <input type="month" style={s.input} value={kraForm.month.slice(0, 7)}
+              onChange={e => setKraForm(f => ({ ...f, month: e.target.value + '-01' }))} required />
+          </div>
+        </div>
+
+        {kraForm.user_id && (
+          <>
+            {/* Frontend KRAs */}
+            <div style={s.kraSection}>
+              <div style={s.kraSectionLabel}>
+                Frontend KRAs
+                {selectedUserProfile?.team && <span style={s.teamTag}>{selectedUserProfile.team}</span>}
+              </div>
+              <div style={s.kraGrid}>
+                {ALL_KRAS.filter(k => k.team === 'frontend').map(k => (
+                  <div key={k.key} style={s.field}>
+                    <label style={s.label}>
+                      {k.label}
+                      <span style={{ fontWeight: 400, color: C.muted, textTransform: 'none' }}> ({k.unit})</span>
+                    </label>
+                    <input
+                      type="number"
+                      style={{ ...s.input, borderColor: kraValues[k.key] !== undefined && kraValues[k.key] !== '' ? C.electric : C.border }}
+                      value={kraValues[k.key] ?? ''}
+                      min="0" step="1"
+                      placeholder="Monthly target"
+                      onChange={e => setKraValues(v => ({ ...v, [k.key]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Backend KRAs */}
+            <div style={{ ...s.kraSection, marginTop: 16 }}>
+              <div style={s.kraSectionLabel}>Backend KRAs</div>
+              <div style={s.kraGrid}>
+                {ALL_KRAS.filter(k => k.team === 'backend').map(k => (
+                  <div key={k.key} style={s.field}>
+                    <label style={s.label}>
+                      {k.label}
+                      <span style={{ fontWeight: 400, color: C.muted, textTransform: 'none' }}> ({k.unit})</span>
+                    </label>
+                    <input
+                      type="number"
+                      style={{ ...s.input, borderColor: kraValues[k.key] !== undefined && kraValues[k.key] !== '' ? C.electric : C.border }}
+                      value={kraValues[k.key] ?? ''}
+                      min="0" step="1"
+                      placeholder="Monthly target"
+                      onChange={e => setKraValues(v => ({ ...v, [k.key]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {kraStatus && (
+          <div style={{ ...s.alert, color: kraStatus.type === 'success' ? C.success : C.error, background: kraStatus.type === 'success' ? '#ECFDF5' : '#FEF2F2', borderColor: kraStatus.type === 'success' ? C.success : C.error, marginTop: 16 }}>
+            {kraStatus.type === 'success' ? '✅' : '❌'} {kraStatus.msg}
+          </div>
+        )}
+        <button type="submit" style={{ ...s.btn, marginTop: 16 }} disabled={savingKra || !kraForm.user_id}>
+          {savingKra ? 'Saving…' : 'Save KRA Targets'}
+        </button>
+      </form>
+
+      {/* ── Existing MT Targets ── */}
       <div style={{ ...s.hdr2, marginTop: 28 }}>
-        <div style={s.sectionLabel2}>Current Targets</div>
+        <div style={s.sectionLabel2}>Current MT Targets</div>
         <select style={{ ...s.select, width: 200 }} value={filterUser} onChange={e => setFilterUser(e.target.value)}>
           <option value="">All users</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -181,6 +328,11 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
+function firstOfMonth() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`
+}
+
 const s = {
   page: { padding: '32px 24px', fontFamily: 'Montserrat, sans-serif', maxWidth: 1040, margin: '0 auto' },
   title: { fontSize: 26, fontWeight: 700, color: C.prussian, margin: 0 },
@@ -188,6 +340,10 @@ const s = {
   card: { background: C.white, borderRadius: 12, padding: 24, boxShadow: '0 2px 12px rgba(0,0,0,0.08)', marginBottom: 8 },
   sectionLabel: { fontSize: 12, fontWeight: 700, color: C.prussian, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 },
   sectionLabel2: { fontSize: 12, fontWeight: 700, color: C.prussian, textTransform: 'uppercase', letterSpacing: '0.06em' },
+  kraSection: { background: C.bg, borderRadius: 8, padding: '14px 16px' },
+  kraSectionLabel: { fontSize: 11, fontWeight: 700, color: C.prussian, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 },
+  teamTag: { background: C.electric + '18', color: C.electric, borderRadius: 20, padding: '1px 8px', fontSize: 10, fontWeight: 700, textTransform: 'capitalize', letterSpacing: 0 },
+  kraGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 16 },
   field: { display: 'flex', flexDirection: 'column', gap: 5 },
   label: { fontSize: 11, fontWeight: 700, color: C.prussian, textTransform: 'uppercase', letterSpacing: '0.05em' },
